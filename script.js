@@ -665,31 +665,58 @@ if('ResizeObserver' in window)new ResizeObserver(resizeTerrain).observe(terrainH
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&terrainFrame){cancelAnimationFrame(terrainFrame);terrainFrame=0;}else if(!document.hidden)scheduleTerrain();});
 reducedMotion.addEventListener('change',()=>{document.documentElement.classList.toggle('js-motion',!reducedMotion.matches&&!!revealObserver);terrainPointer.targetStrength=0;terrainPointer.strength=0;terrainHero.classList.remove('pointer-active');if(reducedMotion.matches){document.querySelectorAll('.reveal').forEach(node=>node.classList.add('is-revealed'));drawTerrain();}else scheduleTerrain();});
 const identityItems=[['.identity-first','.brand-first'],['.identity-last','.brand-last'],['.hero-profession','.brand-role']].map(([source,target])=>{
- const overlay=el('span','identity-flight');overlay.setAttribute('aria-hidden','true');document.body.append(overlay);
- return {source:document.querySelector(source),target:document.querySelector(target),overlay};
+ const overlays=[el('span','identity-flight'),el('span','identity-flight')];
+ overlays.forEach(overlay=>{overlay.setAttribute('aria-hidden','true');document.body.append(overlay);});
+ return {source:document.querySelector(source),target:document.querySelector(target),overlays};
 });
 const identityHeader=document.querySelector('.header');
-const identityHandoffStart=.88;
-function updateIdentity(){
- const hero=document.querySelector('.hero-identity');
- const heroRect=hero.getBoundingClientRect(),headerRect=identityHeader.getBoundingClientRect();
- const travel=Math.max(1,heroRect.bottom+scrollY-headerRect.bottom);
- const progress=document.querySelector('#home').hidden||menuOpen?1:Math.min(1,Math.max(0,scrollY/travel));
- const headerOpacity=Math.max(0,(progress-identityHandoffStart)/(1-identityHandoffStart));
- document.body.classList.add('identity-active');document.body.style.setProperty('--identity-header-opacity',headerOpacity);
- identityItems.forEach(({source,target,overlay})=>{
-  overlay.textContent=source.textContent;
-  if(reducedMotion.matches){overlay.style.opacity=progress<1?'1':'0';source.style.opacity=progress<1?'1':'';overlay.style.display='none';return;}
-  source.style.opacity='';overlay.style.display='';
-  const from=source.getBoundingClientRect(),to=target.getBoundingClientRect();
-  const sourceStyle=getComputedStyle(source),targetStyle=getComputedStyle(target);
-  const sourceSize=parseFloat(sourceStyle.fontSize),targetSize=parseFloat(targetStyle.fontSize);
-  const scale=1+(targetSize/sourceSize-1)*progress;
-  const sourceSpacing=parseFloat(sourceStyle.letterSpacing)||0,targetSpacing=parseFloat(targetStyle.letterSpacing)||0;
-  overlay.style.font=sourceStyle.font;overlay.style.lineHeight=sourceStyle.lineHeight;overlay.style.letterSpacing=(sourceSpacing+(targetSpacing/(targetSize/sourceSize)-sourceSpacing)*progress)+'px';
-  overlay.style.transform='translate3d('+(from.left+(to.left-from.left)*progress)+'px,'+(from.top+(to.top-from.top)*progress)+'px,0) scale('+scale+')';
-  overlay.style.opacity=String(1-headerOpacity);
+const identityScrambleChars='!<>-_\\/[]{}—=+*^?#________';
+const identityScrambleDuration=800,identityScrambleDelay=180,identityScrollThreshold=40;
+let identityDestination=null,identityAnimation=0,identityStarted=0;
+function drawIdentityScramble(now){
+ const progress=Math.min(1,(now-identityStarted)/identityScrambleDuration);
+ const reveal=Math.max(0,(now-identityStarted-identityScrambleDelay)/(identityScrambleDuration-identityScrambleDelay));
+ identityItems.forEach(({source,target,overlays})=>{
+  const nodes=identityDestination?[source,target]:[target,source];
+  overlays.forEach((overlay,index)=>{
+   const node=nodes[index],rect=node.getBoundingClientRect(),style=getComputedStyle(node);
+   overlay.style.zIndex=node===source?'19':'21';
+   overlay.style.font=style.font;overlay.style.lineHeight=style.lineHeight;overlay.style.letterSpacing=style.letterSpacing;
+   overlay.style.transform='translate3d('+rect.left+'px,'+rect.top+'px,0)';
+   const phase=index?reveal:progress;
+   overlay.textContent=Array.from(node.textContent).map((char,i,chars)=>{
+    if(/\s/.test(char))return char;
+    const offset=(i%7)/14,local=Math.min(1,Math.max(0,(phase-offset)/(1-offset)));
+    if(index&&local>=1)return char;
+    if(!index&&local===0)return char;
+    if(!index&&local>=1)return ' ';
+    if(index&&local===0)return ' ';
+    return identityScrambleChars[Math.floor(Math.random()*identityScrambleChars.length)];
+   }).join('');
+   overlay.style.opacity=String(index?Math.min(1,reveal*3):1-progress);
+  });
  });
+ if(progress<1){identityAnimation=requestAnimationFrame(drawIdentityScramble);return;}
+ identityAnimation=0;
+ identityItems.forEach(({overlays})=>overlays.forEach(overlay=>overlay.style.opacity='0'));
+ document.body.style.setProperty('--identity-header-opacity',identityDestination?1:0);
+ document.body.style.setProperty('--identity-source-opacity',identityDestination?0:1);
+}
+function updateIdentity(){
+ const destination=document.querySelector('#home').hidden||menuOpen||scrollY>identityScrollThreshold;
+ document.body.classList.add('identity-active');
+ if(destination===identityDestination)return;
+ const initial=identityDestination===null;identityDestination=destination;
+ if(identityAnimation)cancelAnimationFrame(identityAnimation);
+ identityAnimation=0;
+ if(initial||reducedMotion.matches){
+  identityItems.forEach(({overlays})=>overlays.forEach(overlay=>overlay.style.opacity='0'));
+  document.body.style.setProperty('--identity-header-opacity',destination?1:0);
+  document.body.style.setProperty('--identity-source-opacity',destination?0:1);return;
+ }
+ document.body.style.setProperty('--identity-header-opacity',0);
+ document.body.style.setProperty('--identity-source-opacity',0);
+ identityStarted=performance.now();identityAnimation=requestAnimationFrame(drawIdentityScramble);
 }
 window.addEventListener('resize',()=>requestAnimationFrame(updateIdentity));
 document.fonts.ready.then(updateIdentity);reducedMotion.addEventListener('change',updateIdentity);
