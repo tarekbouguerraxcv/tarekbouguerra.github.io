@@ -427,16 +427,31 @@ function animatePage(id){
 const menuButton=document.querySelector('.menu-toggle');
 const menuPanel=document.querySelector('#menu-panel');
 let menuOpen=false;
-let menuPreviousFocus=null;
+let menuPreviousFocus=null,menuAnimation=null;
+const menuClosedFrame={opacity:0,clipPath:'inset(0 0 100% 0)'};
+const menuOpenFrame={opacity:1,clipPath:'inset(0 0 0 0)'};
 function setMenu(open){
  if(open===menuOpen)return;
  menuOpen=open;menuButton.setAttribute('aria-expanded',String(open));menuButton.setAttribute('aria-label',t(open?'closeMenu':'openMenu'));
- document.body.classList.toggle('menu-open',open);menuPanel.hidden=!open;document.querySelector('main').inert=open;document.querySelector('.site-footer').inert=open;document.querySelector('.header nav').inert=open;
- if(open){menuPreviousFocus=document.activeElement;if(!reducedMotion.matches)menuPanel.animate([{opacity:0,clipPath:'inset(0 0 100% 0)'},{opacity:1,clipPath:'inset(0 0 0 0)'}],{duration:550,easing:'cubic-bezier(.16,1,.3,1)'});menuPanel.querySelector('a').focus();}
+ const current=menuAnimation?getComputedStyle(menuPanel):null;
+ const from=current?{opacity:current.opacity,clipPath:current.clipPath}:open?menuClosedFrame:menuOpenFrame;
+ menuAnimation?.cancel();menuAnimation=null;
+ document.body.classList.toggle('menu-open',open);menuPanel.inert=!open;
+ document.querySelector('main').inert=open;document.querySelector('.site-footer').inert=open;document.querySelector('.header nav').inert=open;
+ if(open){menuPreviousFocus=document.activeElement;menuPanel.hidden=false;menuPanel.querySelector('a').focus({preventScroll:true});}
  else if(menuPreviousFocus?.isConnected)menuPreviousFocus.focus({preventScroll:true});
+ if(reducedMotion.matches){menuPanel.hidden=!open;return;}
+ menuAnimation=menuPanel.animate([from,open?menuOpenFrame:menuClosedFrame],{duration:open?550:320,easing:open?'cubic-bezier(.16,1,.3,1)':'ease-in-out'});
+ menuAnimation.onfinish=()=>{menuPanel.hidden=!menuOpen;menuAnimation=null;};
 }
 menuButton.addEventListener('click',()=>setMenu(!menuOpen));
-menuPanel.addEventListener('click',event=>{if(event.target.closest('a'))setMenu(false);});
+document.querySelectorAll('.header a[href^="#"], .menu-panel a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{
+ if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+ event.preventDefault();
+ setMenu(false);
+ if(location.hash!==link.hash)history.pushState(null,'',link.hash);
+ updateRoute();
+}));
 document.addEventListener('keydown',event=>{
  if(!menuOpen)return;
  if(event.key==='Escape'){setMenu(false);return;}
